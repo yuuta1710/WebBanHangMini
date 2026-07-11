@@ -46,9 +46,10 @@ const initializeDatabase = async () => {
     -- 2. Tạo bảng đơn hàng giả lập nếu chưa tồn tại
     CREATE TABLE IF NOT EXISTS orders (
         id SERIAL PRIMARY KEY,
+        order_code VARCHAR(50) UNIQUE NOT NULL, -- ✨ THÊM MỚI: Mã đơn hàng bảo mật hiển thị ra Frontend
         customer_name VARCHAR(255) NOT NULL,
         total_price INT NOT NULL,
-        items JSONB NOT NULL, -- Sử dụng JSONB để lưu mảng danh sách sản phẩm mua cực kỳ tiện lợi
+        items JSONB NOT NULL, 
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `;

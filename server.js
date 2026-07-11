@@ -19,7 +19,26 @@ const catchAsync = (fn) => {
         fn(req, res, next).catch(next); // Nếu có lỗi, .catch(next) sẽ tự đẩy qua lỗi hệ thống
     };
 };
-
+// Hàm helper tự động sinh mã đơn hàng bảo mật dạng: TN-20260711-X97B
+const generateOrderCode = () => {
+    const now = new Date();
+    
+    // Lấy ngày, tháng, năm hiện tại (đảm bảo luôn có 2 chữ số cho ngày và tháng)
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    
+    const dateStr = `${year}${month}${day}`; // Kết quả: 20260711
+    
+    // Tạo chuỗi 4 ký tự ngẫu nhiên bao gồm chữ hoa và số
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let randomStr = '';
+    for (let i = 0; i < 6; i++) {
+        randomStr += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    
+    return `TN-${dateStr}-${randomStr}`; // Trả về dạng: TN-20260711-X97B
+};
 // Tạo một luồng ghi file (Write Stream) ở chế độ append (ghi nối tiếp)
 const accessLogStream = fs.createWriteStream(
     path.join(__dirname, 'access.log'), 
@@ -184,17 +203,35 @@ app.post('/api/orders', catchAsync(async (req, res, next) => {
         }
  
         // BƯỚC 4.4: TẠO ĐƠN HÀNG LƯU VÀO DATABASE
-        // Chèn thông tin đơn hàng cùng mảng sản phẩm dạng JSONB vào bảng orders
+        
+        // 1. Sinh mã đơn hàng ngẫu nhiên theo ngày tháng cho khách hàng này
+        const orderCode = generateOrderCode(); 
+
+        // 2. Cập nhật câu lệnh INSERT bổ sung cột order_code
         const insertOrderQuery = `
-            INSERT INTO orders (customer_name, total_price, items) 
-            VALUES ($1, $2, $3) 
-            RETURNING id, customer_name, total_price, created_at;
-        `;
+            INSERT INTO orders (order_code, customer_name, total_price, items) 
+            VALUES ($1, $2, $3, $4) 
+            RETURNING id, order_code, customer_name, total_price, created_at;
+        `; 
+        
         const orderResult = await client.query(insertOrderQuery, [
-            customer_name, 
-            totalPrice, 
-            JSON.stringify(orderSummary) // Lưu mảng đối tượng dưới dạng chuỗi JSONB
+            orderCode,          // $1
+            customer_name,      // $2
+            totalPrice,         // $3
+            JSON.stringify(orderSummary) // $4
         ]);
+ 
+        // CHỐT GIAO DỊCH: Xác nhận lưu tất cả thay đổi vĩnh viễn xuống DB
+        await client.query('COMMIT');
+        console.log(`✅ [TRANSACTION SUCCESS] Đơn hàng ${orderResult.rows[0].order_code} (ID: #${orderResult.rows[0].id}) đã chốt thành công.`);
+        console.log(`========================================================================================\n`);
+ 
+        // Trả về kết quả cho Frontend (Frontend từ nay sẽ dùng order_code để hiển thị cho khách)
+        res.status(201).json({
+            status: "success",
+            message: "Đặt hàng thành công và hệ thống đã cập nhật số lượng tồn kho giả lập!",
+            order: orderResult.rows[0] // Trả ra đầy đủ id chạy ngầm và order_code hiển thị
+        });
  
         // CHỐT GIAO DỊCH: Xác nhận lưu tất cả thay đổi vĩnh viễn xuống DB
         await client.query('COMMIT');
