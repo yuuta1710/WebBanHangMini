@@ -233,8 +233,18 @@ app.post('/api/orders', async (req, res) => {
 // =========================================================================
 // 5. MỞ CỔNG LẮNG NGHE REQUEST
 // =========================================================================
+app.get('/', (req, res) => {
+    res.status(200).send('🚀 Welcome to E-Commerce Server Core API!');
+});
+
+// API Kiểm tra sức khỏe hệ thống (Health Check Endpoint)
 app.get('/api/health', (req, res) => {
-    res.status(200).json({ status: "UP", message: "TechNovaVN Backend đang chạy tốt!" });
+    res.status(200).json({ 
+        status: "UP", 
+        timestamp: new Date(), 
+        environment: process.env.NODE_ENV || "production", 
+        message: "Backend đang chạy tốt!" 
+    });
 });
 app.listen(PORT, () => {
     console.log(`=============================================`);
