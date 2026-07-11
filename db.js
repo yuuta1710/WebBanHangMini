@@ -1,12 +1,13 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+// Kiểm tra môi trường chạy hiện tại để kích hoạt SSL động thông minh
+const isProduction = process.env.NODE_ENV === 'production';
+
 // Khởi tạo Pool kết nối với chuỗi DATABASE_URL từ file .env
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // ⚠️ ĐIỀU KIỆN BẮT BUỘC ĐỐI VỚI RENDER POSTGRESQL:
-  // Render yêu cầu kết nối bảo mật SSL. Đoạn code dưới đây giúp Node.js 
-  // chấp nhận chứng chỉ SSL tự ký (Self-signed) của Render mà không bị từ chối.
+  // BẮT BUỘC BẬT SSL: Do Render yêu cầu tất cả kết nối (kể cả từ máy local) phải qua SSL/TLS
   ssl: {
     rejectUnauthorized: false
   }
@@ -16,7 +17,7 @@ const pool = new Pool({
 const testConnection = async () => {
   try {
     const client = await pool.connect();
-    console.log('✅ Kết nối thành công tới PostgreSQL trên Render Cloud!');
+    console.log(isProduction ? '✅ Kết nối thành công tới PostgreSQL trên Render Cloud!' : '✅ Kết nối thành công tới PostgreSQL dưới máy Local!');
     
     // Thử lấy thời gian hiện tại của Database để chắc chắn thông suốt
     const res = await client.query('SELECT NOW()');

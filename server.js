@@ -36,9 +36,24 @@ app.use(morgan('dev'));
 app.use(cors());
 app.use(express.json());
  
-// 3. VIẾT API: LẤY DANH SÁCH SẢN PHẨM (Áp dụng catchAsync & Xử lý lỗi tập trung)
+// 3. ĐỊNH TUYẾN HỆ THỐNG (Đưa lên trên Error Handler để Render check thông suốt)
+app.get('/', (req, res) => {
+    res.status(200).send('🚀 Welcome to E-Commerce Server Core API!');
+});
+
+// API Kiểm tra sức khỏe hệ thống (Health Check Endpoint)
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ 
+        status: "UP", 
+        timestamp: new Date(), 
+        environment: process.env.NODE_ENV || "production", 
+        message: "Backend đang chạy tốt!"
+    });
+});
+
+// 4. VIẾT API: LẤY DANH SÁCH SẢN PHẨM (Nâng cấp tích hợp catchAsync xử lý lỗi tập trung)
 app.get('/api/products', catchAsync(async (req, res, next) => {
-    // Lấy các tham số lọc từ Query String (?search=...&minPrice=...&maxPrice=...)
+    // 1. Lấy các tham số lọc từ Query String (?search=...&minPrice=...&maxPrice=...)
     const { search, minPrice, maxPrice } = req.query;
     
     let queryText = 'SELECT * FROM products WHERE 1=1';
@@ -69,10 +84,10 @@ app.get('/api/products', catchAsync(async (req, res, next) => {
     // Luôn sắp xếp theo ID tăng dần để đảm bảo giao diện hiển thị đồng nhất
     queryText += ' ORDER BY id ASC';
 
-    // Thực hiện truy vấn vào Database
+    // 2. Thực hiện truy vấn vào Database
     const result = await pool.query(queryText, queryParams);
     
-    // Kiểm tra nếu kết quả trống
+    // 3. Kiểm tra nếu kết quả trống (Database trống hoặc không tìm thấy sản phẩm phù hợp)
     if (result.rows.length === 0) {
         return res.status(200).json({
             status: "success",
@@ -81,39 +96,40 @@ app.get('/api/products', catchAsync(async (req, res, next) => {
         });
     }
 
-    // Trả dữ liệu dạng JSON về cho Frontend
+    // 4. Trả dữ liệu dạng JSON về cho Frontend
     res.status(200).json({
         status: "success",
         total: result.rows.length,
-        data: result.rows
+        data: result.rows // Mảng chứa danh sách các sản phẩm
     });
 })); 
  
-// 4. VIẾT API: XỬ LÝ ĐẶT HÀNG & TRỪ KHO TỰ ĐỘNG (POST /api/orders)
+// 5. VIẾT API: XỬ LÝ ĐẶT HÀNG & TRỪ KHO TỰ ĐỘNG (POST /api/orders)
 app.post('/api/orders', catchAsync(async (req, res, next) => {
-    let client; // Đưa biến client ra ngoài phạm vi để khối finally luôn bắt được
+    let client; // Đưa biến client ra ngoài phạm vi để khối finally luôn bắt được và giải phóng kết nối
  
     try {
-        // LỚP PHÒNG THỦ 1: Chống dữ liệu rỗng dưới tải nặng
+        // 🛡️ LỚP PHÒNG THỦ 1: Chống crash lỗi 500 HTML khi gói tin req.body trống rỗng/mất kết nối dưới tải nặng
         if (!req.body || Object.keys(req.body).length === 0) {
             const error = new Error("Không nhận được dữ liệu đơn hàng. Vui lòng kiểm tra lại cấu hình định dạng body JSON!");
             error.statusCode = 400;
-            return next(error); // Chuyển tiếp lỗi sang trạm tập trung thay vì return trực tiếp
+            return next(error);
         }
 
+        // Tiếp nhận Request body từ Frontend một cách an toàn bên trong khối xử lý lỗi try...catch
         const { customer_name, items } = req.body;
  
-        // LỚP PHÒNG THỦ 2: Kiểm tra dữ liệu đầu vào cơ bản (Validation)
+        // 🛡️ LỚP PHÒNG THỦ 2: Kiểm tra dữ liệu đầu vào cơ bản (Validation)
         if (!customer_name || !items || !Array.isArray(items) || items.length === 0) {
             const error = new Error("Thông tin đơn hàng không hợp lệ. Vui lòng cung cấp tên và danh sách sản phẩm!");
             error.statusCode = 400;
             return next(error);
         }
  
-        // Mượn cổng kết nối kết nối từ Pool
+        // Sau khi kiểm tra dữ liệu đầu vào thành công mới mượn cổng kết nối kết nối từ Pool
         client = await pool.connect();
  
-        // Khởi động Giao dịch (Transaction)
+        // BƯỚC 4.0: Khởi động Giao dịch (Transaction)
         await client.query('BEGIN');
         console.log(`\n=================== 🛒 KHỞI TẠO TRANSACTION ĐƠN HÀNG [Khách: ${customer_name}] ===================`);
  
@@ -125,43 +141,39 @@ app.post('/api/orders', catchAsync(async (req, res, next) => {
             const { product_id, quantity } = item;
  
             if (!product_id || !quantity || quantity <= 0) {
-                const error = new Error(`Sản phẩm hoặc số lượng mua không hợp lệ.`);
-                error.statusCode = 400;
-                throw error;
+                throw new Error(`Sản phẩm hoặc số lượng mua không hợp lệ.`);
             }
  
-            // KIỂM TRA KHO VÀ LOCK DÒNG (FOR UPDATE) chống Race Condition
+            // BƯỚC 4.1: KIỂM TRA KHO VÀ LOCK DÒNG (FOR UPDATE)
+            // Ngăn chặn Race Condition: Nếu có request khác định sửa sản phẩm này, chúng phải xếp hàng đợi COMMIT.
             const productCheck = await client.query(
                 'SELECT id, name, price, stock_quantity FROM products WHERE id = $1 FOR UPDATE',
                 [product_id]
             );
  
             if (productCheck.rows.length === 0) {
-                const error = new Error(`Sản phẩm với ID ${product_id} không tồn tại trên hệ thống.`);
-                error.statusCode = 400;
-                throw error;
+                throw new Error(`Sản phẩm với ID ${product_id} không tồn tại trên hệ thống.`);
             }
  
             const product = productCheck.rows[0];
  
-            // ĐỐI CHIẾU SỐ LƯỢNG TỒN KHO GIẢ LẬP
+            // BƯỚC 4.2: ĐỐI CHIẾU SỐ LƯỢNG TỒN KHO GIẢ LẬP
             if (product.stock_quantity < quantity) {
-                const error = new Error(`Sản phẩm [${product.name}] đã hết hàng hoặc không đủ số lượng (Hiện còn: ${product.stock_quantity}, Bạn muốn mua: ${quantity}).`);
-                error.statusCode = 400;
-                throw error;
+                throw new Error(`Sản phẩm [${product.name}] đã hết hàng hoặc không đủ số lượng (Hiện còn: ${product.stock_quantity}, Bạn muốn mua: ${quantity}).`);
             }
  
-            // TIẾN HÀNH TRỪ KHO TRONG TRANSACTION
+            // BƯỚC 4.3: TIẾN HÀNH TRỪ KHO TRONG TRANSACTION
             await client.query(
                 'UPDATE products SET stock_quantity = stock_quantity - $1 WHERE id = $2',
                 [quantity, product_id]
             );
             console.log(`📦 [LOG TRỪ KHO] Sản phẩm: ${product.name} | Đã trừ: ${quantity} | Còn lại: ${product.stock_quantity - quantity}`);
  
-            // Tính toán tổng tiền ở Backend chống can thiệp giá
+            // Tính toán tổng tiền ở Backend (Tuyệt đối không lấy giá tiền từ Frontend truyền lên để tránh bị hack)
             const itemTotalPrice = product.price * quantity;
             totalPrice += itemTotalPrice;
  
+            // Lưu thông tin tóm tắt để nạp vào bảng hóa đơn
             orderSummary.push({
                 product_id: product.id,
                 product_name: product.name,
@@ -171,7 +183,8 @@ app.post('/api/orders', catchAsync(async (req, res, next) => {
             });
         }
  
-        // TẠO ĐƠN HÀNG LƯU VÀO DATABASE (Định dạng JSONB nâng cao)
+        // BƯỚC 4.4: TẠO ĐƠN HÀNG LƯU VÀO DATABASE
+        // Chèn thông tin đơn hàng cùng mảng sản phẩm dạng JSONB vào bảng orders
         const insertOrderQuery = `
             INSERT INTO orders (customer_name, total_price, items) 
             VALUES ($1, $2, $3) 
@@ -180,14 +193,15 @@ app.post('/api/orders', catchAsync(async (req, res, next) => {
         const orderResult = await client.query(insertOrderQuery, [
             customer_name, 
             totalPrice, 
-            JSON.stringify(orderSummary)
+            JSON.stringify(orderSummary) // Lưu mảng đối tượng dưới dạng chuỗi JSONB
         ]);
  
-        // CHỐT GIAO DỊCH: Lưu vĩnh viễn
+        // CHỐT GIAO DỊCH: Xác nhận lưu tất cả thay đổi vĩnh viễn xuống DB
         await client.query('COMMIT');
         console.log(`✅ [TRANSACTION SUCCESS] Đơn hàng #${orderResult.rows[0].id} đã chốt thành công.`);
         console.log(`========================================================================================\n`);
  
+        // Trả về kết quả thành công dưới dạng JSON đồng nhất cho Frontend hiển thị hóa đơn
         res.status(201).json({
             status: "success",
             message: "Đặt hàng thành công và hệ thống đã cập nhật số lượng tồn kho giả lập!",
@@ -195,58 +209,43 @@ app.post('/api/orders', catchAsync(async (req, res, next) => {
         });
  
     } catch (err) {
-        // HỦY GIAO DỊCH (ROLLBACK) để khôi phục lại kho nếu phát sinh lỗi giữa luồng
+        // HỦY GIAO DỊCH (ROLLBACK): Chỉ thực hiện hủy khi cổng kết nối client đã được mượn thành công
         if (client) {
             await client.query('ROLLBACK');
         }
         console.error(`❌ [TRANSACTION ROLLBACK] Giao dịch thất bại. Lý do:`, err.message);
         console.log(`========================================================================================\n`);
  
-        // Phân tách lỗi nghiệp vụ (Validation -> 400) hoặc lỗi crash hệ thống (-> 500)
-        if (!err.statusCode) {
-            const isValidationError = err.message.includes('không tồn tại') || err.message.includes('không đủ số lượng') || err.message.includes('không hợp lệ');
-            err.statusCode = isValidationError ? 400 : 500;
-        }
+        // Phân tách mã lỗi nghiệp vụ hoặc lỗi crash hệ thống
+        const isValidationError = err.message.includes('không tồn tại') || err.message.includes('không đủ số lượng') || err.message.includes('không hợp lệ');
+        err.statusCode = isValidationError ? 400 : 500;
         
-        // Đẩy lỗi sang Global Error Handler trung tâm xử lý tập trung
+        // Đẩy lỗi sang Trạm xử lý tập trung điều phối phản hồi JSON thay vì trả về thô tại đây
         next(err);
  
     } finally {
-        // GIẢI PHÓNG KẾT NỐI tránh rò rỉ (Connection Leak)
+        // ⚠️ ĐIỀU KIỆN TIÊN QUYẾT: Giải phóng kết nối trả lại cho Pool quản lý, tránh rò rỉ (Connection Leak)
         if (client) {
             client.release();
         }
     }
 }));
 
-// 5. CÁC ĐỊNH TUYẾN THIẾT LẬP HỆ THỐNG
-// Định tuyến trang chủ (Root Route)
-app.get('/', (req, res) => {
-    res.status(200).send('🚀 Welcome to E-Commerce Server Core API!');
-});
 
-// API Kiểm tra sức khỏe hệ thống (Health Check Endpoint)
-app.get('/api/health', (req, res) => {
-    res.status(200).json({ 
-        status: "UP", 
-        timestamp: new Date(), 
-        environment: process.env.NODE_ENV || "production", 
-        message: "Backend đang chạy tốt!" 
-    });
-});
-
-// 6. TRẠM XỬ LÝ LỖI TẬP TRUNG (Bắt buộc phải nằm dưới tất cả các Routes)
+// 6. TRẠM XỬ LÝ LỖI TẬP TRUNG (Global Error Handler - Bắt buộc đặt ở đáy tệp)
 app.use((err, req, res, next) => {
+    // 1. Ghi nhận log lỗi vào console để lập trình viên theo dõi dưới máy local
     console.error('💥 LỖI HỆ THỐNG:', err.stack);
 
+    // 2. Xác định mã trạng thái HTTP (mặc định là 500 nếu lỗi không xác định)
     const statusCode = err.statusCode || 500;
     
+    // 3. Trả về phản hồi JSON chuẩn hóa cho Frontend
     res.status(statusCode).json({
         success: false,
         status: statusCode === 500 ? 'fail' : 'error',
-        message: err.message || 'Hệ thống TechNovaVN xảy ra sự cố nội bộ!',
-        // Chỉ hiển thị stack log chi tiết khi dev dưới local máy, ẩn khi lên Production Render
-        ...(process.env.NODE_ENV !== 'production' && { stack: err.stack })
+        message: err.message || 'Hệ thống xảy ra sự cố nội bộ!',
+        ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }) // Chỉ hiển thị stack trace khi không phải môi trường production
     });
 });
 
@@ -254,6 +253,6 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
     console.log(`=============================================`);
     console.log(`🚀 Server đang chạy thành công tại cổng: ${PORT}`);
-    console.log(`🌐 API danh sách sản phẩm: http://localhost:${PORT}/api/products`);
+    console.log(`🌐 API sức khỏe hệ thống: http://localhost:${PORT}/api/health`);
     console.log(`=============================================`);
 });
