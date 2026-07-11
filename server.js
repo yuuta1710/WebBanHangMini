@@ -233,6 +233,9 @@ app.post('/api/orders', async (req, res) => {
 // =========================================================================
 // 5. MỞ CỔNG LẮNG NGHE REQUEST
 // =========================================================================
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ status: "UP", message: "TechNovaVN Backend đang chạy tốt!" });
+});
 app.listen(PORT, () => {
     console.log(`=============================================`);
     console.log(`🚀 Server đang chạy thành công tại cổng: ${PORT}`);
