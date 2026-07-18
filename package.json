@@ -10,18 +10,20 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/your-username/demo-de-tai.git"
+    "url": "git+https://github.com/yuuta1710/WebBanHangMini.git"
   },
   "keywords": [],
-  "author": "Your_Name@example.com>",
+  "author": "Thanh Tú",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "helmet": "^8.3.0",
     "morgan": "^1.11.0",
-    "pg": "^8.22.0"
+    "pg": "^8.22.0",
+    "rotating-file-stream": "^3.2.9"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
