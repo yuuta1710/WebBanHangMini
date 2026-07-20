@@ -64,7 +64,7 @@ const requireAdmin = (req, res, next) => {
     next();
 };
 
-<<<<<<< HEAD
+
 // ✨ MỚI: Xác thực TÙY CHỌN - nếu có token hợp lệ thì gắn req.user, KHÔNG có/sai token vẫn cho qua bình thường
 // (khác hẳn middleware "demo" của bản improved trước đó: ở đây không hề nới lỏng quyền của các route
 // YÊU CẦU đăng nhập - middleware này CHỈ dùng cho route công khai muốn "biết thêm" nếu khách đã đăng nhập,
@@ -81,8 +81,6 @@ const optionalAuthenticate = (req, res, next) => {
     next();
 };
 
-=======
->>>>>>> 7bd632e07b103d1002c16bc4e513c3ad74a37033
 // Hàm helper tự động sinh mã đơn hàng bảo mật dạng: TN-20260711-X97B
 const generateOrderCode = () => {
     const now = new Date();
@@ -436,11 +434,7 @@ app.delete('/api/products/:id', authenticate, requireAdmin, catchAsync(async (re
 }));
  
 // 5. VIẾT API: XỬ LÝ ĐẶT HÀNG & TRỪ KHO TỰ ĐỘNG (POST /api/orders)
-<<<<<<< HEAD
 app.post('/api/orders', strictLimiter, optionalAuthenticate, catchAsync(async (req, res, next) => {
-=======
-app.post('/api/orders', strictLimiter, catchAsync(async (req, res, next) => {
->>>>>>> 7bd632e07b103d1002c16bc4e513c3ad74a37033
     let client; // Đưa biến client ra ngoài phạm vi để khối finally luôn bắt được và giải phóng kết nối
  
     try {
@@ -627,7 +621,6 @@ app.get('/api/orders', authenticate, requireAdmin, catchAsync(async (req, res, n
     });
 }));
 
-<<<<<<< HEAD
 // 5.1b ✨ MỚI: API LỊCH SỬ ĐƠN HÀNG CỦA CHÍNH TÀI KHOẢN ĐANG ĐĂNG NHẬP (GET /api/orders/my)
 // ⚠️ BẮT BUỘC đặt TRƯỚC route "/api/orders/:code" bên dưới, nếu không Express sẽ hiểu nhầm
 // chữ "my" chính là giá trị của :code (khớp route theo thứ tự khai báo).
@@ -638,9 +631,6 @@ app.get('/api/orders/my', authenticate, catchAsync(async (req, res, next) => {
     );
     res.status(200).json({ status: "success", total: result.rows.length, data: result.rows });
 }));
-
-=======
->>>>>>> 7bd632e07b103d1002c16bc4e513c3ad74a37033
 // 5.2 ✨ MỚI: API TRA CỨU 1 ĐƠN HÀNG THEO MÃ ĐƠN (GET /api/orders/:code)
 // Công khai (không cần đăng nhập) - khách hàng dùng mã đơn nhận được sau khi đặt hàng để tự tra cứu
 app.get('/api/orders/:code', catchAsync(async (req, res, next) => {

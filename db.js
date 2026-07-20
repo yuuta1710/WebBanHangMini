@@ -116,12 +116,8 @@ const initializeDatabase = async () => {
 
     -- ✨ MỚI: Thêm cột status cho đơn hàng cũ (mặc định 'pending' cho các đơn đã có từ trước)
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'pending';
-<<<<<<< HEAD
-
-    -- ✨ MỚI: Thêm cột user_id để gắn đơn hàng với tài khoản (NULL cho các đơn cũ đặt trước khi có auth)
+-- ✨ MỚI: Thêm cột user_id để gắn đơn hàng với tài khoản (NULL cho các đơn cũ đặt trước khi có auth)
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_id INT;
-=======
->>>>>>> 7bd632e07b103d1002c16bc4e513c3ad74a37033
   `;
 
   try {
