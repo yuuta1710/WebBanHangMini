@@ -60,10 +60,8 @@ const initializeDatabase = async () => {
         total_price INT NOT NULL,
         items JSONB NOT NULL, 
         status VARCHAR(30) NOT NULL DEFAULT 'pending', -- ✨ MỚI: Vòng đời đơn hàng: pending | confirmed | shipping | delivered | cancelled
-<<<<<<< HEAD
         user_id INT, -- ✨ MỚI: Gắn đơn hàng với tài khoản (NULL = khách đặt hàng không đăng nhập, vẫn hợp lệ)
-=======
->>>>>>> 7bd632e07b103d1002c16bc4e513c3ad74a37033
+
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
