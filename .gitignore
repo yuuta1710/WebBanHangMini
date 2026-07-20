@@ -1,4 +1,15 @@
+# Mở rộng .gitignore khuyến nghị
 node_modules/
 .env
-access.log
+.env.local
+.env.*.local
+logs/
+*.log
+dist/
+build/
 .DS_Store
+.vscode/
+.idea/
+*.pem
+*.key
+coverage/
